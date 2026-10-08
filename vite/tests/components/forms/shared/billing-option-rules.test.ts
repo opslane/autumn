@@ -1,17 +1,24 @@
 import { describe, expect, test } from "bun:test";
 import {
 	CusProductStatus,
+	type FreeTrial,
+	FreeTrialDuration,
 	type FullCusProduct,
 	type ProductItem,
 	type ProductV2,
+	TRIAL_ANCHORS_BILLING_CYCLE_REASON,
 } from "@autumn/shared";
 import { firstPhaseReplacesPlanNow } from "@/components/forms/create-schedule/utils/firstPhaseReplacesPlanNow";
+import { trialAnchorsScheduleBillingCycle } from "@/components/forms/create-schedule/utils/scheduleBillingCycleReset";
+import { defaultScheduleTrialFormValues } from "@/components/forms/create-schedule/utils/scheduleFreeTrial";
+import { firstPhaseBackdatesLiveSubscription } from "@/components/forms/create-schedule/utils/schedulePhaseTiming";
 import {
 	type CustomerStatePhase,
 	type CustomerStatePlan,
 	EMPTY_CUSTOMER_STATE_PLAN,
 } from "@/components/forms/customer-state/customerStateSchema";
 import { getBillingOptionRules } from "@/components/forms/shared/utils/billingOptionRules";
+import { DISABLED_FREE_TRIAL_FORM_VALUES } from "@/components/forms/shared/utils/freeTrialFormValues";
 
 const scheduleResetRule = (
 	state: Parameters<typeof getBillingOptionRules>[0]["state"],
@@ -285,6 +292,125 @@ describe("schedule carry over usages rule", () => {
 				customerProducts: [liveCustomerProduct({ productId: "seats" })],
 			}).visible,
 		).toBe(false);
+	});
+});
+
+const TRIAL_FORM_VALUES = {
+	trialEnabled: true,
+	trialLength: 14,
+	trialDuration: FreeTrialDuration.Day,
+	trialCardRequired: true,
+};
+const RUNNING_TRIAL = {
+	trialEndsAt: NOW_MS + 14 * DAY_MS,
+	formValues: TRIAL_FORM_VALUES,
+};
+const CATALOG_TRIAL = {
+	length: 7,
+	duration: FreeTrialDuration.Day,
+	card_required: true,
+} as FreeTrial;
+
+const trialResetRule = ({
+	trialEnabled,
+	liveSubscriptionTrialing,
+	startsAt = null,
+}: {
+	trialEnabled: boolean;
+	liveSubscriptionTrialing: boolean;
+	startsAt?: number | null;
+}) => {
+	const phases = firstPhase({ productId: "pro", startsAt });
+	return scheduleResetRule({
+		trialAnchorsBillingCycle: trialAnchorsScheduleBillingCycle({
+			phases,
+			nowMs: NOW_MS,
+			trialEnabled,
+			liveSubscriptionTrialing,
+			backdatesLiveSubscription: firstPhaseBackdatesLiveSubscription({
+				phases,
+				nowMs: NOW_MS,
+				isExistingSchedule: false,
+				hasActiveSubscription: true,
+			}),
+		}),
+	});
+};
+
+const LOCKED_BY_TRIAL = {
+	visible: true,
+	disabled: true,
+	disabledReason: TRIAL_ANCHORS_BILLING_CYCLE_REASON,
+};
+const ENABLED = { visible: true, disabled: false, disabledReason: null };
+
+describe("schedule billing cycle reset rule with a trial", () => {
+	test("locks when the running trial is kept", () => {
+		const { trialEnabled } = defaultScheduleTrialFormValues({
+			currentTrial: RUNNING_TRIAL,
+			catalogFreeTrial: null,
+		});
+		expect(
+			trialResetRule({ trialEnabled, liveSubscriptionTrialing: true }),
+		).toEqual(LOCKED_BY_TRIAL);
+	});
+
+	test("locks when a plan's catalog trial would start", () => {
+		const { trialEnabled } = defaultScheduleTrialFormValues({
+			currentTrial: null,
+			catalogFreeTrial: CATALOG_TRIAL,
+		});
+		expect(
+			trialResetRule({ trialEnabled, liveSubscriptionTrialing: false }),
+		).toEqual(LOCKED_BY_TRIAL);
+	});
+
+	test("locks when a trial is switched on for a customer who isn't trialing", () => {
+		expect(
+			trialResetRule({
+				trialEnabled: TRIAL_FORM_VALUES.trialEnabled,
+				liveSubscriptionTrialing: false,
+			}),
+		).toEqual(LOCKED_BY_TRIAL);
+	});
+
+	test("stays enabled with no trial", () => {
+		const { trialEnabled } = defaultScheduleTrialFormValues({
+			currentTrial: null,
+			catalogFreeTrial: null,
+		});
+		expect(
+			trialResetRule({ trialEnabled, liveSubscriptionTrialing: false }),
+		).toEqual(ENABLED);
+	});
+
+	test("stays enabled when the running trial is turned off", () => {
+		expect(
+			trialResetRule({
+				trialEnabled: DISABLED_FREE_TRIAL_FORM_VALUES.trialEnabled,
+				liveSubscriptionTrialing: true,
+			}),
+		).toEqual(ENABLED);
+	});
+
+	test("stays enabled when a kept trial backdates the trialing subscription", () => {
+		expect(
+			trialResetRule({
+				trialEnabled: true,
+				liveSubscriptionTrialing: true,
+				startsAt: NOW_MS - 7 * DAY_MS,
+			}),
+		).toEqual(ENABLED);
+	});
+
+	test("stays enabled when the first phase starts later, where no trial is sent", () => {
+		expect(
+			trialResetRule({
+				trialEnabled: true,
+				liveSubscriptionTrialing: true,
+				startsAt: NOW_MS + 7 * DAY_MS,
+			}),
+		).toEqual(ENABLED);
 	});
 });
 
