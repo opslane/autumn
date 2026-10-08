@@ -1,60 +1,48 @@
-import { trialAnchorsBillingCycle } from "@autumn/shared";
-import type {
-	CustomerStateForm,
-	CustomerStatePhase,
-} from "@/components/forms/customer-state/customerStateSchema";
-import { canScheduleFreeTrial } from "./scheduleFreeTrial";
+import { type FreeTrial, trialAnchorsBillingCycle } from "@autumn/shared";
+import type { CustomerStateForm } from "@/components/forms/customer-state/customerStateSchema";
+import type { FreeTrialFormValues } from "@/components/forms/shared/utils/freeTrialFormValues";
+import {
+	type CurrentScheduleTrial,
+	scheduleRequestHasTrial,
+} from "./scheduleFreeTrial";
 import { firstPhaseStartsLater } from "./schedulePhaseTiming";
 
-/** set_plans rejects any billing cycle anchor beside a trial it keeps or starts, unless the first phase backdates a trialing subscription. */
-export const trialAnchorsScheduleBillingCycle = ({
-	phases,
-	nowMs,
-	trialEnabled,
-	liveSubscriptionTrialing,
-	backdatesLiveSubscription,
-}: {
-	phases: CustomerStatePhase[];
-	nowMs: number;
-	trialEnabled: boolean;
-	liveSubscriptionTrialing: boolean;
-	backdatesLiveSubscription: boolean;
-}) =>
-	trialAnchorsBillingCycle({
-		hasTrial:
-			trialEnabled &&
-			canScheduleFreeTrial({ phases, nowMs, liveSubscriptionTrialing }),
-		backdatesTrialingSubscription:
-			backdatesLiveSubscription && liveSubscriptionTrialing,
-	});
-
-/** How the first phase resets its cycle; a reset locked by a trial reads as off, so the request leaves the anchor out too. */
+/**
+ * How the first phase resets its cycle. set_plans rejects any anchor beside the trial it keeps or starts, unless the
+ * first phase backdates a trialing subscription; that reset is locked and reads as off, so the request leaves it out.
+ */
 export const scheduleBillingCycleReset = ({
 	formValues,
 	nowMs,
-	liveSubscriptionTrialing,
+	currentTrial,
+	catalogFreeTrial,
 	backdatesLiveSubscription,
 }: {
 	formValues: Pick<
 		CustomerStateForm,
-		"phases" | "trialEnabled" | "resetBillingCycle" | "billingCycleAnchorMode"
-	>;
+		"phases" | "resetBillingCycle" | "billingCycleAnchorMode"
+	> &
+		FreeTrialFormValues;
 	nowMs: number;
-	liveSubscriptionTrialing: boolean;
+	currentTrial: CurrentScheduleTrial | null;
+	catalogFreeTrial: FreeTrial | null;
 	backdatesLiveSubscription: boolean;
 }) => {
 	const { phases, billingCycleAnchorMode } = formValues;
-	const trialAnchorsBillingCycle = trialAnchorsScheduleBillingCycle({
-		phases,
-		nowMs,
-		trialEnabled: formValues.trialEnabled,
-		liveSubscriptionTrialing,
-		backdatesLiveSubscription,
+	const trialAnchorsCycle = trialAnchorsBillingCycle({
+		hasTrial: scheduleRequestHasTrial({
+			phases,
+			nowMs,
+			formValues,
+			currentTrial,
+			catalogFreeTrial,
+		}),
+		backdatesTrialingSubscription:
+			backdatesLiveSubscription && currentTrial !== null,
 	});
-	const resetBillingCycle =
-		formValues.resetBillingCycle && !trialAnchorsBillingCycle;
+	const resetBillingCycle = formValues.resetBillingCycle && !trialAnchorsCycle;
 	return {
-		trialAnchorsBillingCycle,
+		trialAnchorsBillingCycle: trialAnchorsCycle,
 		resetBillingCycle,
 		resetsCycleNow:
 			resetBillingCycle &&

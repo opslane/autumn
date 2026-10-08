@@ -273,7 +273,8 @@ export function CreateScheduleFormProvider({
 	} = scheduleBillingCycleReset({
 		formValues,
 		nowMs,
-		liveSubscriptionTrialing,
+		currentTrial,
+		catalogFreeTrial,
 		backdatesLiveSubscription,
 	});
 

@@ -22,8 +22,7 @@ import { hasPaidRecurringSchedulePlan } from "../utils/hasPaidRecurringScheduleP
 import { phaseToBillingCycleAnchor } from "../utils/phaseBillingCycleAnchor";
 import {
 	type CurrentScheduleTrial,
-	canScheduleFreeTrial,
-	scheduleFreeTrialParam,
+	scheduleFreeTrialRequestParam,
 } from "../utils/scheduleFreeTrial";
 import { firstPhaseStartsLater } from "../utils/schedulePhaseTiming";
 
@@ -174,19 +173,15 @@ export function buildCreateScheduleRequestBody({
 		body.ends_at = endDate;
 	}
 
-	const freeTrialParam =
-		freeTrial &&
-		canScheduleFreeTrial({
-			phases,
-			nowMs: now,
-			liveSubscriptionTrialing: !!currentTrial,
-		})
-			? scheduleFreeTrialParam({
-					formValues: freeTrial,
-					currentTrial,
-					catalogFreeTrial,
-				})
-			: undefined;
+	const freeTrialParam = freeTrial
+		? scheduleFreeTrialRequestParam({
+				phases,
+				nowMs: now,
+				formValues: freeTrial,
+				currentTrial,
+				catalogFreeTrial,
+			})
+		: undefined;
 	if (freeTrialParam !== undefined) body.free_trial = freeTrialParam;
 	return body as SetPlansParamsV0;
 }
