@@ -1,0 +1,54 @@
+dockerfile: docker/Dockerfile
+port: 3000
+health_path: /
+services:
+  - postgres
+  - redis
+  - dynamodb
+  - sqs
+  - kafka
+processes:
+  - name: dashboard
+    command: cd /app/vite && bun run dev --host 0.0.0.0 --port 3000
+    env:
+      VITE_PORT: "3000"
+      VITE_FRONTEND_URL: http://localhost:3000
+  - name: workers
+    command: bun workers
+  - name: balance-workers
+    command: bun balance-workers
+env:
+  NODE_ENV: development
+  CAPY_DEV: "1"
+  SERVER_PORT: "8080"
+  AUTUMN_API_URL: http://localhost:8080
+  AUTUMN_PUBLIC_API_URL: http://localhost:8080
+  CLIENT_URL: http://localhost:3000
+  WORKER_PROCESSES: "1"
+  STRIPE_WEBHOOK_SKIP_VERIFY: "true"
+  # Throwaway secrets for this check only.
+  BETTER_AUTH_SECRET: opslane-verify-throwaway-0123456789abcdef0123456789abcdef
+  ENCRYPTION_PASSWORD: opslane-verify-throwaway-password
+  ENCRYPTION_IV: 0123456789abcdef
+  DATABASE_CRITICAL_URL: postgresql://app:app@pg:5432/app
+  CRITICAL_DATABASE_URL: postgresql://app:app@pg:5432/app
+  MISC_CACHE_DRAGONFLY_PUBLIC_URL: redis://redis:6379
+  CACHE_V2_DRAGONFLY_URL: redis://redis:6379
+  CACHE_V2_DRAGONFLY_PUBLIC_URL: redis://redis:6379
+  SQS_QUEUE_URL: http://sqs:9324/000000000000/autumn.fifo
+  SQS_QUEUE_URL_V2: http://sqs:9324/000000000000/autumn.fifo
+  TRACK_SQS_QUEUE_URL: http://sqs:9324/000000000000/autumn-track.fifo
+  TRACK_ASYNC_SQS_QUEUE_URL: http://sqs:9324/000000000000/autumn-track.fifo
+  TRACK_ASYNC_STANDARD_SQS_QUEUE_URL: http://sqs:9324/000000000000/autumn-track-async
+  STRIPE_WEBHOOK_SQS_QUEUE_URL: http://sqs:9324/000000000000/autumn-stripe-webhook.fifo
+  KAFKA_AUTH_MODE: none
+migrate: cd /app && bun /opslane/init.ts && AUTUMN_DB_DIRECT=1 bun db migrate --bootstrap
+seed: bun /opslane/seed.ts
+verify_setup:
+  instructions: |
+    Open the dashboard on the published port (3000). Sign in with the seeded email/password
+    account: email verify@example.com, password Verify-Passw0rd!. The email is already verified.
+    This account has no organization yet, so after sign-in the dashboard shows onboarding and
+    you create an organization there. The API runs on 127.0.0.1:8080 inside the container and
+    the dashboard proxies to it (/__autumn_api, /api/auth). Stripe is not configured, so any
+    Stripe-dependent flow will not work.
